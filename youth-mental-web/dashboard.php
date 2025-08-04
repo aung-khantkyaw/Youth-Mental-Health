@@ -1038,132 +1038,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
         const progressBar = document.getElementById('progress-bar');
 
         try {
+            if (!<?php echo isset($_SESSION['cleaned_csv']) ? 'true' : 'false'; ?>) {
+                showToast('No CSV file found. Please upload a file first.', 'error');
+                return;
+            }
+
             startBtn.disabled = true;
             startBtn.textContent = '⏳ Training in progress...';
             trainingStatus.classList.remove('hidden');
             trainingResult.classList.add('hidden');
 
+            let logsContainer = document.getElementById('training-logs');
+            if (!logsContainer) {
+                logsContainer = document.createElement('div');
+                logsContainer.id = 'training-logs';
+                logsContainer.className = 'mt-6 bg-gray-900 rounded-lg p-4 text-green-400 font-mono text-sm max-h-96 overflow-y-auto';
+                logsContainer.style.display = 'none';
+                trainingResult.parentNode.insertBefore(logsContainer, trainingResult);
+            }
+
+            logsContainer.style.display = 'block';
+            logsContainer.innerHTML = '<div class="text-blue-400">🚀 Initializing training session...</div>';
+
             let progress = 0;
             const progressInterval = setInterval(() => {
-                progress += Math.random() * 15;
-                if (progress > 90) progress = 90;
+                progress += Math.random() * 5;
+                if (progress > 95) progress = 95;
                 progressBar.style.width = progress + '%';
-            }, 500);
+            }, 1000);
 
-            console.log('Starting model training...');
+            const eventSource = new EventSource('train_stream.php');
 
-            const response = await fetch('train_model.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'same-origin'
-            });
+            eventSource.onmessage = function (event) {
+                try {
+                    const data = JSON.parse(event.data);
 
-            console.log('Response status:', response.status);
-            console.log('Response headers:', response.headers);
+                    if (data.log) {
+                        appendTrainingLog(data.log, data.type || 'info');
+                    } else if (data.error) {
+                        appendTrainingLog(`ERROR: ${data.error}`, 'error');
+                        clearInterval(progressInterval);
+                        eventSource.close();
+                        throw new Error(data.error);
+                    } else if (data.success) {
+                        clearInterval(progressInterval);
+                        progressBar.style.width = '100%';
 
-            const responseText = await response.text();
-            console.log('Raw response:', responseText);
+                        appendTrainingLog('Training completed successfully!', 'success');
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status} - ${responseText}`);
-            }
+                        trainingResult.innerHTML = `
+                            <div class="p-4 my-4 bg-green-100 border border-green-200 rounded-lg">
+                                <h4 class="text-green-800 font-semibold mb-2">✅ Training Completed Successfully!</h4>
+                                <div class="text-green-700 text-sm space-y-1">
+                                    <div><strong>Model File:</strong> ${data.model_filename}</div>
+                                    <div><strong>Train Accuracy:</strong> ${(data.train_accuracy * 100).toFixed(2)}%</div>
+                                    <div><strong>Test Accuracy:</strong> ${(data.test_accuracy * 100).toFixed(2)}%</div>
+                                    <div><strong>Cross Validation Score:</strong> ${(data.cross_validation_score * 100).toFixed(2)}%</div>
+                                </div>
+                            </div>
+                        `;
 
-            let result;
-            try {
-                result = JSON.parse(responseText);
-            } catch (parseError) {
-                console.error('JSON parse error:', parseError);
-                throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
-            }
+                        showToast(`Model trained successfully! Test Accuracy: ${(data.test_accuracy * 100).toFixed(1)}%`, 'success');
+                        startBtn.style.display = 'none';
 
-            clearInterval(progressInterval);
-            progressBar.style.width = '100%';
+                        setTimeout(() => {
+                            loadActiveModelInfo();
+                            loadModelsInfo();
+                        }, 1000);
 
-            console.log('Training result:', result);
-
-            if (result.success) {
-                trainingResult.innerHTML = `
-                    <div class="p-4 bg-green-100 border border-green-200 rounded-lg">
-                        <h4 class="text-green-800 font-semibold mb-2">✅ Training Completed Successfully!</h4>
-                        <div class="text-green-700 text-sm space-y-1">
-                            <div><strong>Model File:</strong> ${result.model_filename}</div>
-                            <div><strong>Train Accuracy:</strong> ${(result.train_accuracy * 100).toFixed(2)}%</div>
-                            <div><strong>Test Accuracy:</strong> ${(result.test_accuracy * 100).toFixed(2)}%</div>
-                            <div><strong>Total Rows:</strong> ${result.data_info.total_rows}</div>
-                            <div><strong>Features Used:</strong> ${result.data_info.total_features}</div>
-                            <div><strong>Target:</strong> ${result.data_info.target_column}</div>
-                            <div><strong>Model Type:</strong> ${result.data_info.model_type}</div>
-                            ${result.data_info.class_distribution ? `<div><strong>Class Distribution:</strong> ${JSON.stringify(result.data_info.class_distribution)}</div>` : ''}
-                        </div>
-                    </div>
-                `;
-                const finalAccuracy = result.test_accuracy || result.train_accuracy;
-                showToast(`Model trained successfully! Test Accuracy: ${(finalAccuracy * 100).toFixed(1)}%`, 'success');
-
-                startBtn.style.display = 'none';
-
-                setTimeout(() => {
-                    loadActiveModelInfo();
-                }, 1000);
-            } else {
-                let debugInfo = '';
-                if (result.debug) {
-                    debugInfo = `
-                        <div class="mt-2 text-xs">
-                            <strong>Debug Info:</strong><br>
-                            Session has CSV: ${result.debug.session_has_csv}<br>
-                            CSV path: ${result.debug.csv_path}<br>
-                            File exists: ${result.debug.file_exists}<br>
-                            Timestamp: ${result.debug.timestamp}
-                        </div>
-                    `;
+                        eventSource.close();
+                    }
+                } catch (parseError) {
+                    console.error('Error parsing SSE data:', parseError);
+                    appendTrainingLog(`Parse error: ${event.data}`, 'error');
                 }
+            };
 
-                if (result.debug_info) {
-                    debugInfo += `
-                        <div class="mt-3 p-2 bg-yellow-50 rounded text-xs">
-                            <strong>Model Analysis:</strong><br>
-                            Target Column: ${result.debug_info.target_column}<br>
-                            Accuracy: ${(result.debug_info.accuracy * 100).toFixed(1)}%<br>
-                            Classes: ${result.debug_info.unique_classes}<br>
-                            Training Samples: ${result.debug_info.training_samples}<br>
-                            Features Used: ${result.debug_info.features_used}<br>
-                            ${result.debug_info.better_target ? `<strong>Better Target:</strong> ${result.debug_info.better_target}<br>` : ''}
-                            <strong>Suggestion:</strong> ${result.debug_info.suggestion}
-                        </div>
-                    `;
-                }
-
-                trainingResult.innerHTML = `
-                    <div class="p-4 bg-red-100 border border-red-200 rounded-lg">
-                        <h4 class="text-red-800 font-semibold mb-2">❌ Training Failed</h4>
-                        <div class="text-red-700 text-sm">
-                            <strong>Error:</strong> ${result.error || 'Unknown error'}
-                        </div>
-                        ${debugInfo}
-                    </div>
-                `;
-                throw new Error(result.error || 'Training failed');
-            }
+            eventSource.onerror = function (event) {
+                console.error('SSE error:', event);
+                clearInterval(progressInterval);
+                appendTrainingLog('Connection error occurred', 'error');
+                eventSource.close();
+                throw new Error('SSE connection failed');
+            };
 
         } catch (error) {
             console.error('Training error:', error);
 
-            if (trainingResult.classList.contains('hidden')) {
-                trainingResult.innerHTML = `
-                    <div class="p-4 bg-red-100 border border-red-200 rounded-lg">
-                        <h4 class="text-red-800 font-semibold mb-2">❌ Training Failed</h4>
-                        <div class="text-red-700 text-sm">
-                            <strong>Error:</strong> ${error.message}
-                        </div>
-                        <div class="text-red-600 text-xs mt-2">
-                            Check browser console for more details. Make sure Python API is running.
-                        </div>
+            trainingResult.innerHTML = `
+                <div class="p-4 bg-red-100 border border-red-200 rounded-lg">
+                    <h4 class="text-red-800 font-semibold mb-2">❌ Training Failed</h4>
+                    <div class="text-red-700 text-sm">
+                        <strong>Error:</strong> ${error.message}
                     </div>
-                `;
-            }
+                    <div class="text-red-600 text-xs mt-2">
+                        Check the logs above for more details. Make sure Python API is running.
+                    </div>
+                </div>
+            `;
 
             showToast('Training failed: ' + error.message, 'error');
         } finally {
@@ -1172,6 +1144,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
             trainingStatus.classList.add('hidden');
             trainingResult.classList.remove('hidden');
         }
+    }
+
+    function appendTrainingLog(message, type = 'info') {
+        const logsContainer = document.getElementById('training-logs');
+        if (!logsContainer) return;
+
+        const timestamp = new Date().toLocaleTimeString();
+        const colors = {
+            'info': 'text-blue-400',
+            'success': 'text-green-400',
+            'error': 'text-red-400',
+            'warning': 'text-yellow-400'
+        };
+
+        const logEntry = document.createElement('div');
+        logEntry.className = `${colors[type] || 'text-gray-400'} mb-1`;
+        logEntry.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
+
+        logsContainer.appendChild(logEntry);
+        logsContainer.scrollTop = logsContainer.scrollHeight;
     }
 
     async function classifyMentalHealth() {
@@ -1426,7 +1418,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
                     </td>
                 </tr>
             `;
-                // throw new Error(result.error || 'Failed to load model information');
             }
         } catch (error) {
             modelsList.innerHTML = `

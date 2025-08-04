@@ -312,13 +312,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const input = document.getElementById(inputId);
             const isPassword = input.type === 'password';
 
-            // Toggle input type
             input.type = isPassword ? 'text' : 'password';
 
-            // Toggle button text/icon
             button.textContent = isPassword ? 'Hide' : 'Show';
 
-            // Optional: Add title attribute for accessibility
             button.title = isPassword ? 'Hide password' : 'Show password';
         }
     </script>
