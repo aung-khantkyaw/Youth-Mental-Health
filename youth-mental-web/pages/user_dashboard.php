@@ -6,7 +6,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-require_once 'config.php';
+require_once '../config/config.php';
 
 $predictionError = $predictionSuccess = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['predict_mood'])) {
@@ -77,6 +77,15 @@ $accountError = $accountSuccess = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_account'])) {
     $newUsername = trim($_POST['username']);
     $newEmail = trim($_POST['email']);
+    $accountError = $accountSuccess = '';
+    if (isset($_SESSION['toast_message']) && isset($_SESSION['toast_type'])) {
+        $toastMessage = $_SESSION['toast_message'];
+        $toastType = $_SESSION['toast_type'];
+        unset($_SESSION['toast_message'], $_SESSION['toast_type']);
+    } else {
+        $toastMessage = '';
+        $toastType = '';
+    }
     if (empty($newUsername) || !preg_match('/^[a-zA-Z0-9_]{3,20}$/', $newUsername)) {
         $accountError = 'Invalid username. Only 3-20 characters, letters, numbers, and underscores allowed.';
     } elseif (!filter_var($newEmail, FILTER_VALIDATE_EMAIL)) {
@@ -92,6 +101,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_account'])) {
             $_SESSION['username'] = $newUsername;
             $_SESSION['email'] = $newEmail;
             $accountSuccess = 'Account updated successfully!';
+            $_SESSION['toast_message'] = $accountSuccess;
+            $_SESSION['toast_type'] = 'success';
         }
     }
 }
@@ -135,6 +146,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
         $stmt = $pdo->prepare('UPDATE users SET password = ? WHERE id = ?');
         $stmt->execute([password_hash($newPassword, PASSWORD_DEFAULT), $_SESSION['user_id']]);
         $passwordSuccess = 'Password updated successfully!';
+        $_SESSION['toast_message'] = $passwordSuccess;
+        $_SESSION['toast_type'] = 'success';
     }
 }
 ?>
@@ -215,13 +228,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
         }
 
         .toast.success {
-            background: linear-gradient(135deg, #10B981, #059669);
-            box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+            background: oklch(79.2% 0.209 151.711);
         }
 
         .toast.error {
-            background: linear-gradient(135deg, #EF4444, #DC2626);
-            box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
+            background: oklch(71.2% 0.194 13.428);
         }
 
         .toast.show {
@@ -472,7 +483,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
                     echo 'style="display:none;"'; ?>>
 
                     <button type="button" onclick="showAccountForm()"
-                        class="group w-full p-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl hover:from-cyan-600 hover:to-blue-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95">
+                        class="group w-full p-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl hover:from-cyan-600 hover:to-blue-700 transition-all duration-300 shadow-lg hover:shadow-xl">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center space-x-3">
                                 <div
@@ -497,7 +508,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
                     </button>
 
                     <button type="button" onclick="showPasswordForm()"
-                        class="group w-full p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95">
+                        class="group w-full p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center space-x-3">
                                 <div
@@ -522,7 +533,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
                     </button>
 
                     <a href="logout.php"
-                        class="group block w-full p-4 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:from-red-600 hover:to-pink-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95">
+                        class="group block w-full p-4 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:from-red-600 hover:to-pink-700 transition-all duration-300 shadow-lg hover:shadow-xl">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center space-x-3">
                                 <div
@@ -717,7 +728,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
 
 
             <section id="project-overview-section" class="card mb-8 lg:col-span-3">
-                <h1 class="text-2xl md:text-3xl font-bold text-blue-900 mb-6">📊 Prediction History</h1>
+                <h1 class="text-2xl md:text-3xl font-bold text-blue-900 mb-6">Prediction History</h1>
                 <p class="text-slate-600 mb-4">Your previous mental health predictions and lifestyle data.</p>
 
                 <?php
@@ -758,7 +769,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
                                         <td class="py-3 px-4"><?php echo htmlspecialchars($record['screen_time']); ?> h</td>
                                         <td class="py-3 px-4"><?php echo htmlspecialchars($record['sleep_hours']); ?> h</td>
                                         <td class="py-3 px-4"><?php echo htmlspecialchars($record['study_hours']); ?> h</td>
-                                        <td class="py-3 px-4"><?php echo htmlspecialchars($record['physical_activity']); ?></td>
+                                        <td class="py-3 px-4"><?php echo htmlspecialchars($record['physical_activity']); ?> min
+                                        </td>
                                         <td class="py-3 px-4">
                                             <?php echo htmlspecialchars($record['mental_clarity_score']); ?>/10
                                         </td>
@@ -814,7 +826,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
         const existingToasts = document.querySelectorAll('.toast');
         existingToasts.forEach(toast => toast.remove());
 
-        const icon = type === 'success' ? '✅' : '❌';
+        const icon = type === 'success'
+            ? '<svg class="w-6 h-6 text-green-50" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>'
+            : '<svg class="w-6 h-6 text-red-50" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
         const toastClass = type === 'success' ? 'toast success' : 'toast error';
 
         const toast = document.createElement('div');

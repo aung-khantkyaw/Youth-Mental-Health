@@ -106,13 +106,13 @@
             }
             ?>
             <?php if (!isset($_SESSION['user_id'])): ?>
-                <a href="pages/login.php"
+                <a href="login.php"
                     class="login-button px-4 py-2 rounded-full text-sm font-medium text-white hover:bg-sky-600 transition-colors duration-200">Login</a>
             <?php else: ?>
                 <a href=<?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'ADMIN') {
-                    echo '"pages/dashboard.php"';
+                    echo '"dashboard.php"';
                 } else {
-                    echo '"pages/user_dashboard.php"';
+                    echo '"user_dashboard.php"';
                 } ?> class="login-button px-4 py-2 rounded-full text-sm font-medium text-white hover:bg-sky-600 transition-colors duration-200">Dashboard</a>
             <?php endif; ?>
         </div>

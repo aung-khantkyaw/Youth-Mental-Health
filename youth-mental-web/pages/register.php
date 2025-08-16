@@ -1,47 +1,78 @@
 <?php
-
-require_once 'config.php';
-session_start();
+require_once '../config/config.php';
 
 $username = '';
 $email = '';
-$errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
-    $password = trim($_POST['password'] ?? '');
+    $username = trim($_POST['username']);
+    $email = trim($_POST['email']);
+    $password = trim($_POST['password']);
+    $confirmPassword = trim($_POST['confirm_password']);
+    $errors = [];
 
     if (empty($username)) {
         $errors['username'] = 'Username is required';
+    } else if (strlen($username) < 3 || strlen($username) > 20) {
+        $errors['username'] = 'Username must be between 3 and 20 characters';
+    } elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $username)) {
+        $errors['username'] = 'Username can only contain letters, numbers, and underscores';
+    }
+
+    if (empty($email)) {
+        $errors['email'] = 'Email is required';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors['email'] = 'Email is invalid';
     }
 
     if (empty($password)) {
         $errors['password'] = 'Password is required';
+    } elseif (strlen($password) < 6) {
+        $errors['password'] = 'Password must be at least 6 characters';
+    } elseif (!preg_match('/[A-Z]/', $password)) {
+        $errors['password'] = 'Password must contain at least one uppercase letter';
+    } elseif (!preg_match('/[a-z]/', $password)) {
+        $errors['password'] = 'Password must contain at least one lowercase letter';
+    } elseif (!preg_match('/[0-9]/', $password)) {
+        $errors['password'] = 'Password must contain at least one number';
+    } elseif (preg_match('/\s/', $password)) {
+        $errors['password'] = 'Password cannot contain spaces';
+    }
+
+    if (empty($confirmPassword)) {
+        $errors['confirm_password'] = 'Please confirm your password';
+    } elseif ($password !== $confirmPassword) {
+        $errors['confirm_password'] = 'Passwords do not match';
+    }
+
+    if (!isset($errors['username'])) {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
+        $stmt->execute([$username]);
+        if ($stmt->fetchColumn() > 0) {
+            $errors['username'] = 'Username already exists';
+        }
+    }
+
+    if (!isset($errors['email'])) {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        if ($stmt->fetchColumn() > 0) {
+            $errors['email'] = 'Email already exists';
+        }
     }
 
     if (empty($errors)) {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ?");
-        $stmt->execute([$username]);
-        $user = $stmt->fetch();
+        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $pdo->prepare("INSERT INTO users (username, email, password) VALUES (?, ?, ?)");
+        if ($stmt->execute([$username, $email, $hashedPassword])) {
+            $success = 'Registration successful! You can now login.';
 
-        if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['username'] = $user['username'];
-            $_SESSION['email'] = $user['email'];
-            $_SESSION['role'] = $user['role'];
-
-            if ($user['role'] === 'ADMIN') {
-                header('Location: dashboard.php');
-            } else if ($user['role'] === 'USER') {
-                header('Location: index.php');
-            }
-            exit;
+            $username = $email = $password = $confirmPassword = '';
         } else {
-            $errors['general'] = 'Invalid username or password. Please try again.';
+            $errors['general'] = 'Registration failed. Please try again.';
         }
     }
 }
-
 ?>
 
 <!DOCTYPE html>
@@ -50,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Youth Mental Health - Login</title>
+    <title>Youth Mental Health - Register</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -92,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        .login-card {
+        .register-card {
             background-color: rgba(255, 255, 255, 0.9);
             border-radius: 1rem;
             padding: 2.5rem;
@@ -145,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-color: #dc2626 !important;
         }
 
-        .login-button {
+        .register-button {
             width: 100%;
             padding: 1rem 1.5rem;
             border-radius: 0.75rem;
@@ -158,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             box-shadow: 0 4px 10px rgba(6, 182, 212, 0.3);
         }
 
-        .login-button:hover {
+        .register-button:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 15px rgba(6, 182, 212, 0.4);
         }
@@ -204,11 +235,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 
 <body>
-    <div class="login-card">
-        <h2 class="text-3xl font-bold text-blue-900 mb-8">Login</h2>
+    <div class="register-card">
+        <h2 class="text-3xl font-bold text-blue-900 mb-8">Register</h2>
+
+        <?php if (isset($success)): ?>
+            <div class="mb-4 border border-green-400 bg-green-50 p-4 rounded">
+                <p class="text-green-700"><?php echo htmlspecialchars($success); ?></p>
+            </div>
+        <?php endif; ?>
 
         <?php if (isset($errors['general'])): ?>
-            <div class="mb-4 border border-red-400 bg-red-50 p-4 rounded">
+            <div class="error mb-4 border border-red-400 bg-red-50 p-4 rounded">
                 <p class="text-red-700"><?php echo htmlspecialchars($errors['general']); ?></p>
             </div>
         <?php endif; ?>
@@ -220,6 +257,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     class="<?php echo isset($errors['username']) ? 'error-input' : ''; ?>">
                 <?php if (isset($errors['username'])): ?>
                     <div class="error"><?php echo htmlspecialchars($errors['username']); ?></div>
+                <?php endif; ?>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" value="<?php echo htmlspecialchars($email); ?>"
+                    class="<?php echo isset($errors['email']) ? 'error-input' : ''; ?>">
+                <?php if (isset($errors['email'])): ?>
+                    <div class="error"><?php echo htmlspecialchars($errors['email']); ?></div>
                 <?php endif; ?>
             </div>
 
@@ -238,12 +284,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
             </div>
 
+            <div class="form-group">
+                <label for="confirm_password">Confirm Password:</label>
+                <div class="password-container">
+                    <input type="password" id="confirm_password" name="confirm_password"
+                        class="<?php echo isset($errors['confirm_password']) ? 'error-input' : ''; ?>"
+                        style="padding-right: 3rem;">
+                    <button type="button" class="password-toggle" onclick="togglePassword('confirm_password', this)">
+                        Show
+                    </button>
+                </div>
+                <?php if (isset($errors['confirm_password'])): ?>
+                    <div class="error"><?php echo htmlspecialchars($errors['confirm_password']); ?></div>
+                <?php endif; ?>
+            </div>
+
             <div class="form-group mt-6">
-                <button type="submit" class="login-button">Log In</button>
+                <button type="submit" class="register-button">Register</button>
             </div>
         </form>
-        <p class="mt-6 text-slate-600">Don't have an account? <a href="register.php" class="register-link">Register
-                here</a></p>
+        <p class="mt-6 text-slate-600">Already have an account? <a href="login.php" class="register-link">Login here</a>
+        </p>
     </div>
 
     <script>
